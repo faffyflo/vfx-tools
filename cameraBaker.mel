@@ -1,0 +1,101 @@
+proc main()
+{
+    // Get the selected camera
+    string $sel[] = `ls -sl`;
+
+    if (size($sel) == 0) {
+        error "Please select a camera first.";
+    }
+    // Check if selection is a camera transform or shape
+    string $camera_shape;
+    string $cam_shapes[];
+    string $original_camera;
+    string $parents[];
+    
+    if (`nodeType $sel[0]` == "camera") {
+        // print ("Shape node selected");
+        $camera_shape = $sel[0];
+        $parents = `listRelatives -parent $camera_shape`;
+        $original_camera = $parents[0];     
+        print ("Selection is camera shape, getting transform." + "\n"); 
+    } else {
+        $cam_shapes = `listRelatives -shapes -type camera $sel[0]`;
+        if (size($cam_shapes) == 0) {
+            error "Selected object is not a camera.";
+        } else {
+            print ("Selection is camera transform" + "\n");
+        }
+        $original_camera = $sel[0];
+    }
+    print ("Original camera: " + $original_camera + "\n");
+
+    // Duplicate the camera
+    string $dup_cam[] = `duplicate -rr -rc $original_camera`;
+    string $new_cam = $dup_cam[0];
+    // sometimes the camera transform attributes are locked, so unlocking them on the duplicate
+    setAttr ($new_cam + ".tx") -lock 0;
+    setAttr ($new_cam + ".ty") -lock 0;
+    setAttr ($new_cam + ".tz") -lock 0;
+    setAttr ($new_cam + ".rx") -lock 0;
+    setAttr ($new_cam + ".ry") -lock 0;
+    setAttr ($new_cam + ".rz") -lock 0;
+    setAttr ($new_cam + ".sx") -lock 0;
+    setAttr ($new_cam + ".sy") -lock 0;
+    setAttr ($new_cam + ".sz") -lock 0;
+    setAttr ($new_cam + ".coi") -lock 0; // unlock "coi" center of interest too
+    setAttr ($new_cam + ".coi") 200;
+
+    string $temp_cam[] = `duplicate -rr -rc $new_cam`;
+    string $temporary_cam = $temp_cam[0];
+    // parent the temporary cam to the original camera, this way we'll use the temporary cam to constrain the duplicate, knowing no transform is locked (regular parenting doesn't care about locked transforms, but constrains do seem to)
+    parent $temporary_cam $original_camera;
+    print ("Duplicate camera: " + $new_cam + "\n");
+
+    // Unparent the duplicate camera if it has a parent
+    string $dup_parents[] = `listRelatives -parent $new_cam`;
+    if (size($dup_parents) > 0) {
+        parent -world $new_cam;
+    }
+
+    // Create parent constraint
+    string $constraint[] = `parentConstraint -mo $temporary_cam $new_cam`;
+    // Select the duplicate camera for baking
+    select -r $new_cam;
+    // Get the timeline range
+    float $startTime = `playbackOptions -q -minTime`;
+    float $endTime = `playbackOptions -q -maxTime`;
+
+    // LINK FOCAL LENGTH THROUGH EXPRESSION IN CASE THERE IS FL ANIMATION
+    string $expressionName = $new_cam + "_focalLength_link";
+    string $expressionString = $new_cam + ".focalLength = " + $original_camera + ".focalLength;";
+    // Check if expression already exists and delete it, then create it
+    if (`objExists $expressionName`) {
+        delete $expressionName;
+    }    
+    expression -name $expressionName -string $expressionString;
+
+
+    // Bake simulation
+    bakeResults -simulation true -t ($startTime + ":" + $endTime) 
+        -sampleBy 1 -oversamplingRate 1 -disableImplicitControl true 
+        -preserveOutsideKeys true -sparseAnimCurveBake false 
+        -removeBakedAttributeFromLayer false -removeBakedAnimFromLayer false 
+        -bakeOnOverrideLayer false -minimizeRotation true 
+        -controlPoints false -shape true $new_cam;
+
+    print ("Animation baked on: " + $new_cam + "\n");
+
+    // Delete the parent constraint
+    delete $constraint[0];
+    delete $temporary_cam;
+    print ("Parent constraint deleted.\n");
+
+    // Select the new camera
+    select -r $new_cam;
+
+    print ("Process complete! New baked camera selected: " + $new_cam + "\n");
+
+
+    
+}
+main();
