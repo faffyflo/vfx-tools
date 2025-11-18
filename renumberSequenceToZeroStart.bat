@@ -31,62 +31,122 @@ rem Change to the target folder
 pushd "%~1"
 echo Working in: %CD%
 echo.
-pause
-
 
 rem === Main Loop: === Search for image sequences > Check each extension type for potential sequences
 rem Define supported image formats
 echo checking images with these extensions: png jpg jpeg exr tif tiff dpx
-pause
+set "ext="
+set "extFound=0"
+set "numDigits="
+
+
 for %%e in (png jpg jpeg exr tif tiff dpx) do (
-    echo %%e
-    set "found=0"
-    set "minframe=999999"
-    set "basename="
-    rem Look through all files with this extension > note this "for" syntax searches for all the files in the current directory (we changed directories above) so basically it searches for all files that match * % % e or in other words for a wildcard (*) (i.e. any filename) with extension matching e's in the current itteration of the loop. 
-    for %%f in (*.%%e) do (
-        echo %%f
-        rem remember %~n1 is filename wihout extension and %~x1 is the extention only. That's what we are using here with out variable "f" from our argument % % f
-        set "filename=%%~nf" 
-        set "ext=%%~xf"
-        for %%d in (5 4 3 2) do (
-            echo %%d
-            rem call :checkForOneMatchingImage !filename! % % d !ext!
-        )
-    )
-)
-if !found!==0 (
-    echo No image sequence found in the folder.
-    pause
-    exit /b
+    set "ext=%%e"
+    set "extFound=1"
+    goto :checkForDigits
 )
 
-echo got to the end
-pause
-exit /b
+echo no files with those extensions found
 
+:checkForDigits
+echo found extension: !ext!
 
-:checkForOneMatchingImage   
-    set "fname=%~1"
-    set "fdigits=%~2"
-    set "fext=%~3"
-    rem Extract the last N characters from the filename. :~ is a substring operator: variable:~start, length so we are returning the strings from start to start+length. -start means find start counting from the last character
-    rem anyways this will return either the last 5, 4, 3, or 2 characters depending on digits itteration
-    set "lastchars=!fname:~-%fdigits%!"
+for %%f in (*.!ext!) do (
+    set "filename=%%~nf"
+    echo !filename!
+
+    set "lastchars=!filename:~-5!"
     rem Check if these characters are all numeric digits. Note finstr expects to search within text input, so we need to echo (print/output) lastchar and then pipe that output "|" to finstr
     echo !lastchars!| findstr /r "^[0-9][0-9]*$" >nul
-    echo !lastchars!
-    pause
-
     if !errorlevel! equ 0 (
-        set "found=1"
-        set "basename=%%fname:~0,-%fdigits%%%"
-        goto :found
+        set numDigits=5
+        goto :lookForSmallestDigit
+    )
+    
+    set "lastchars=!filename:~-4!"
+    rem Check if these characters are all numeric digits. Note finstr expects to search within text input, so we need to echo (print/output) lastchar and then pipe that output "|" to finstr
+    echo !lastchars!| findstr /r "^[0-9][0-9]*$" >nul
+    if !errorlevel! equ 0 (
+        set numDigits=4
+        goto :lookForSmallestDigit
     )
 
+    set "lastchars=!filename:~-3!"
+    rem Check if these characters are all numeric digits. Note finstr expects to search within text input, so we need to echo (print/output) lastchar and then pipe that output "|" to finstr
+    echo !lastchars!| findstr /r "^[0-9][0-9]*$" >nul
+    if !errorlevel! equ 0 (
+        set numDigits=3
+        goto :lookForSmallestDigit
+    )
 
-:found
-    echo Found image sequence: !base![!digits! digits].!ext!
+    set "lastchars=!filename:~-2!"
+    rem Check if these characters are all numeric digits. Note finstr expects to search within text input, so we need to echo (print/output) lastchar and then pipe that output "|" to finstr
+    echo !lastchars!| findstr /r "^[0-9][0-9]*$" >nul
+    if !errorlevel! equ 0 (
+        set numDigits=2
+        goto :lookForSmallestDigit
+    )
+)
+echo Searched for frames with 2, 3, 4, or 5 digit frame numbers but could not find any. 
+goto :end
+
+:lookForSmallestDigit
+echo Number of digits in frame number: !numDigits!
+set "base=!filename:~0,-%numDigits%!"
+echo name base is: !base!
+set "minNumber="
+set "lastNum=0"
+set "firstIt=1"
+for %%f in (!base!*) do (
+    set "fname=%%~nf"
+    set "lastchars=!fname:~-%numDigits%!"
+    for /f "tokens=* delims=0" %%N in ("!lastchars!") do set "lastchars=%%N"
+    if not defined lastchars set "lastchars=0"
+    if !lastchars!==0 (
+        echo Found a frame numbered zero, so assuming this sequence already starts at zero and exiting. 
+        goto :end
+    )
+    if !firstIt! == 1 (
+        set "lastnum=!lastchars!"
+        set "firstIt=0"
+    )
+    if !lastchars! LEQ !lastNum! (
+        set "minNumber=!lastchars!"
+    )
+    set "lastnum=!lastchars!"
+)
+echo The smallest frame number detected is !minNumber! and will now be frame 0
+echo Setting up inputs for ffmpeg now...
+:: Configuration
+set "INPUT_PATTERN=!base!%%0!numDigits!d.!ext!"
+set "OUTPUT_PATTERN=!base!%%0!numDigits!d.!ext!"
+set "START_FRAME=!minNumber!"
+
+echo Renumbering image sequence using ffmpeg...
+echo Input pattern: %INPUT_PATTERN%
+echo Output pattern: %OUTPUT_PATTERN%
+echo Starting from frame: %START_FRAME%
+echo.
+:: Use ffmpeg to renumber the sequence
+:: -start_number: where to start reading the input sequence
+:: -i: input pattern (%%04d means 4-digit padding with zeros)
+:: -start_number 0: output starts at 0
+:: -c copy: just copy, don't re-encode
+ffmpeg -start_number %START_FRAME% -i %INPUT_PATTERN% -start_number 0 -c copy %OUTPUT_PATTERN%
+
+if %ERRORLEVEL% EQU 0 (
     echo.
-    pause
-    exit /b
+    echo Success! Images have been renumbered so they start from frame 0.
+    echo Output files: %OUTPUT_PATTERN%
+) else (
+    echo.
+    echo Error occurred during renumbering.
+    echo This script is using ffmpeg, if not installed this could be the issue. Otherwise something else is malfunctioning. 
+)
+
+pause
+exit
+
+:end
+pause 
+exit
