@@ -5,6 +5,8 @@ rem ============================================================================
 rem IMAGE SEQUENCE RENUMBER TOOL
 rem =============================================================================
 rem This script renumbers image sequences to start at frame 0
+rem To use it grab the folder with your image sequence (makes sure there are not multiple image sequences in the same folder)
+rem and then drag and drop that folder onto this .bat file and it will trigger the script and work on the files at the path of the folder you dragged and dropped. 
 rem Supports: png, jpg, jpeg, exr, tif, tiff, dpx
 rem Works with: 
 rem image.##.ext
