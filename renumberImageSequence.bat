@@ -118,9 +118,24 @@ for %%f in (!base!*) do (
     set "lastnum=!lastchars!"
 )
 echo The smallest frame number detected is !minNumber! and will now be frame 0
+echo.
+echo Moving original frames to backup folder first...
+
+rem Create backup folder if it doesn't exist
+if not exist "previousFrameNumbers" mkdir "previousFrameNumbers"
+
+rem Move all original frames to backup folder BEFORE renumbering
+set "moveCount=0"
+for %%f in (!base!*.!ext!) do (
+    move "%%f" "previousFrameNumbers\" >nul
+    set /a moveCount+=1
+)
+echo Moved !moveCount! original frames to "previousFrameNumbers" folder.
+echo.
+
 echo Setting up inputs for ffmpeg now...
 :: Configuration
-set "INPUT_PATTERN=!base!%%0!numDigits!d.!ext!"
+set "INPUT_PATTERN=previousFrameNumbers\!base!%%0!numDigits!d.!ext!"
 set "OUTPUT_PATTERN=!base!%%0!numDigits!d.!ext!"
 set "START_FRAME=!minNumber!"
 
@@ -140,10 +155,12 @@ if %ERRORLEVEL% EQU 0 (
     echo.
     echo Success! Images have been renumbered so they start from frame 0.
     echo Output files: %OUTPUT_PATTERN%
+    echo Original frames are in "previousFrameNumbers" folder.
 ) else (
     echo.
     echo Error occurred during renumbering.
-    echo This script is using ffmpeg, if not installed this could be the issue. Otherwise something else is malfunctioning. 
+    echo This script is using ffmpeg, if not installed this could be the issue. Otherwise something else is malfunctioning.
+    echo Original files have NOT been moved.
 )
 
 pause

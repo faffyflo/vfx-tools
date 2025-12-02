@@ -1,0 +1,1 @@
+subst A: F:\AvatarOS\"AvatarOS Dropbox"
